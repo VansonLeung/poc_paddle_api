@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  paddleocr-api:
+    build: .
+    container_name: paddleocr-vl-api
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEVICE=cpu
+      - USE_DOC_ORIENTATION_CLASSIFY=False
+      - USE_DOC_UNWARPING=False
+      - USE_TEXTLINE_ORIENTATION=False
+      - USE_LAYOUT_DETECTION=True
+    volumes:
+      - ./output:/app/output
+      - ./temp:/app/temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
