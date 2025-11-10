@@ -7,6 +7,9 @@ from typing import Optional, Union
 from fastapi import File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 
+import json
+import numpy as np
+
 from config import settings
 from services import model_service
 from utils import (
@@ -19,6 +22,19 @@ from utils import (
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
 
 
 async def root():
@@ -153,27 +169,15 @@ async def perform_ocr(
         results = ocr.predict(temp_file)
         logger.info(f"OCR prediction completed, got {len(results)} result(s)")
         
-        # Format results
         output_results = []
         for res in results:
             result_dict = {
-                "input_path": res.get("input_path"),
-                "page_index": res.get("page_index"),
-                "ocr_results": []
+                "json": res._to_json(),
+                "markdown": res._to_markdown(),
             }
-            
-            # Extract text and boxes
-            if "rec_texts" in res:
-                for i, text in enumerate(res["rec_texts"]):
-                    result_dict["ocr_results"].append({
-                        "text": text,
-                        "score": float(res["rec_scores"][i]) if "rec_scores" in res else None,
-                        "bbox": res["dt_polys"][i].tolist() if "dt_polys" in res else None
-                    })
-            
             output_results.append(result_dict)
         
-        logger.info(f"OCR request completed successfully")
+        logger.info("OCR request completed successfully")
         return JSONResponse(content={
             "success": True,
             "results": output_results
@@ -279,85 +283,20 @@ async def parse_document(
         )
         logger.info(f"Document parsing completed, got {len(results)} result(s)")
         
-        # Format results
         output_results = []
         for res in results:
-            # Handle both dictionary and object responses
-            if isinstance(res, dict):
-                # Dictionary response format
-                result_dict = {
-                    "input_path": res.get("input_path"),
-                    "page_index": res.get("page_index"),
-                    "model_settings": res.get("model_settings", {}),
-                    "layout_detection": {},
-                    "parsing_results": []
-                }
-                
-
-                # Extract layout detection results
-                if "layout_det_res" in res and res["layout_det_res"]:
-                    layout_det = res["layout_det_res"]
-                    boxes = []
-                    box_list = layout_det["boxes"]
-                    
-                    for box in box_list:
-                        # Use getattr to handle both objects and dict-like objects
-                        box_data = {
-                            "label": box['label'],
-                            "score": box['score'],
-                            "coordinate": [float(c) for c in box['coordinate']]
-                        }
-                        boxes.append(box_data)
-                    
-                    result_dict["layout_detection"] = {
-                        "input_path": layout_det['input_path'],
-                        "page_index": layout_det['page_index'],
-                        "boxes": boxes
-                    }
-                
-                # Extract parsing results (text blocks with content)
-                if "parsing_res_list" in res and res["parsing_res_list"]:
-                    for block in res["parsing_res_list"]:
-                        # Use getattr to handle both objects and dict-like objects
-                        block_data = {
-                            "label": block.label,
-                            "content": block.content,
-                            "bbox": block.bbox,
-                        }
-                        result_dict["parsing_results"].append(block_data)
-                
-            else:
-                # Object response format (legacy)
-                result_dict = {
-                    "input_path": res.get("input_path"),
-                    "page_index": res.get("page_index"),
-                    "layout_parsing_result": {}
-                }
-                
-                # Extract layout parsing results
-                if hasattr(res, "layout_parsing_result"):
-                    lpr = res.layout_parsing_result
-                    result_dict["layout_parsing_result"] = {
-                        "blocks": lpr.get("blocks", []),
-                        "tables": lpr.get("tables", []),
-                        "figures": lpr.get("figures", [])
-                    }
-                
-                # Extract markdown if available
-                if hasattr(res, "markdown"):
-                    result_dict["markdown"] = {
-                        "text": res.markdown.get("text", ""),
-                        "has_images": bool(res.markdown.get("markdown_images"))
-                    }
-            
+            result_dict = {
+                "json": res._to_json(),
+                "markdown": res._to_markdown(),
+            }
             output_results.append(result_dict)
         
         logger.info("Document parser request completed successfully")
         return JSONResponse(content={
             "success": True,
-            "results": output_results
+            "results": output_results,
         })
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -438,99 +377,18 @@ async def recognize_structure(
         results = structure_model.predict(temp_file)
         logger.info(f"Structure recognition completed, got {len(results)} result(s)")
         
-        # Format results
         output_results = []
         for res in results:
-            # Handle both dictionary and object responses
-            if isinstance(res, dict):
-                # Dictionary response format
-                result_dict = {
-                    "input_path": res.get("input_path"),
-                    "page_index": res.get("page_index"),
-                    "model_settings": res.get("model_settings", {}),
-                    "layout_detection": {},
-                    "parsing_results": [],
-                    "tables": [],
-                    "formulas": [],
-                    "charts": []
-                }
-                
-                # Extract layout detection results
-                if "layout_det_res" in res and res["layout_det_res"]:
-                    layout_det = res["layout_det_res"]
-                    boxes = []
-                    # Handle boxes which might be objects or dicts
-                    if hasattr(layout_det, "boxes"):
-                        box_list = layout_det.boxes
-                    elif isinstance(layout_det, dict) and "boxes" in layout_det:
-                        box_list = layout_det["boxes"]
-                    else:
-                        box_list = []
-                    
-                    for box in box_list:
-                        # Use getattr to handle both objects and dict-like objects
-                        box_data = {
-                            "label": getattr(box, "label", ""),
-                            "score": float(getattr(box, "score", 0)),
-                            "coordinate": [float(c) for c in getattr(box, "coordinate", [])]
-                        }
-                        boxes.append(box_data)
-                    
-                    result_dict["layout_detection"] = {
-                        "boxes": boxes,
-                        "box_count": len(boxes)
-                    }
-                
-                # Extract text parsing results
-                if "parsing_res_list" in res and res["parsing_res_list"]:
-                    for block in res["parsing_res_list"]:
-                        # Use getattr to handle both objects and dict-like objects
-                        block_data = {
-                            "label": getattr(block, "block_label", ""),
-                            "content": getattr(block, "block_content", ""),
-                            "bbox": getattr(block, "block_bbox", [])
-                        }
-                        result_dict["parsing_results"].append(block_data)
-                
-                # Extract tables if available
-                if "table_res_list" in res and res["table_res_list"]:
-                    result_dict["tables"] = res["table_res_list"]
-                
-                # Extract formulas if available
-                if "formula_res_list" in res and res["formula_res_list"]:
-                    result_dict["formulas"] = res["formula_res_list"]
-                
-                # Extract charts if available
-                if "chart_res_list" in res and res["chart_res_list"]:
-                    result_dict["charts"] = res["chart_res_list"]
-                
-            else:
-                # Object response format (legacy)
-                result_dict = {
-                    "input_path": res.get("input_path"),
-                    "page_index": res.get("page_index"),
-                    "structure": {}
-                }
-                
-                # Extract structure information
-                if hasattr(res, "layout_parsing_result"):
-                    lpr = res.layout_parsing_result
-                    result_dict["structure"] = {
-                        "layout": lpr.get("layout", []),
-                        "tables": lpr.get("tables", []),
-                        "text_blocks": lpr.get("text_blocks", [])
-                    }
-                
-                # Extract markdown if available
-                if hasattr(res, "markdown"):
-                    result_dict["markdown"] = res.markdown.get("text", "")
-            
+            result_dict = {
+                "json": res._to_json(),
+                "markdown": res._to_markdown(),
+            }
             output_results.append(result_dict)
         
         logger.info("Structure recognition request completed successfully")
         return JSONResponse(content={
             "success": True,
-            "results": output_results
+            "results": output_results,
         })
         
     except HTTPException:

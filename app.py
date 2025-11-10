@@ -67,9 +67,8 @@ def create_app() -> FastAPI:
         title="PaddleOCR VL API",
         description="API for OCR, document parsing, and structure recognition using PaddleOCR",
         version="1.0.0",
-        docs_url="/docs",  # Default Swagger UI
-        redoc_url="/redoc",  # ReDoc UI
-        openapi_url="/openapi.json"  # OpenAPI schema
+        docs_url="/docs",
+        redoc_url="/redoc"
     )
     
     # Add CORS middleware
@@ -88,23 +87,6 @@ def create_app() -> FastAPI:
     app.add_api_route("/doc_parser", routes.parse_document, methods=["POST"], tags=["Document Parser"])
     app.add_api_route("/structure", routes.recognize_structure, methods=["POST"], tags=["Structure Recognition"])
     app.add_api_route("/upload", routes.upload_file_endpoint, methods=["POST"], tags=["Utilities"])
-    
-    # Add custom Swagger documentation routes
-    from fastapi.openapi.docs import get_swagger_ui_html
-    from fastapi.responses import JSONResponse
-    
-    @app.get("/api-doc", include_in_schema=False)
-    async def custom_swagger_ui():
-        """Custom Swagger UI endpoint at /api-doc"""
-        return get_swagger_ui_html(
-            openapi_url="/swagger.json",
-            title=app.title + " - Swagger UI"
-        )
-    
-    @app.get("/swagger.json", include_in_schema=False)
-    async def custom_openapi():
-        """Custom OpenAPI JSON endpoint at /swagger.json"""
-        return JSONResponse(content=app.openapi())
     
     return app
 
