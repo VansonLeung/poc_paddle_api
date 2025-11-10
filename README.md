@@ -92,31 +92,31 @@ bash start.sh
 start.bat
 ```
 
-The server will start on `http://localhost:8000` by default (or the port specified in `.env`).
+The server will start on `http://localhost:18200` by default (or the port specified in `.env`).
 
 You should see output like:
 ```
 INFO:     Started server process [12345]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Uvicorn running on http://0.0.0.0:18200 (Press CTRL+C to quit)
 ```
 
 ### API Documentation
 
 Once the server is running, comprehensive interactive API documentation is available:
 
-- **Swagger UI**: http://localhost:8000/docs
+- **Swagger UI**: http://localhost:18200/docs
   - Interactive API explorer with request/response examples
   - Try out endpoints directly from the browser
   - Complete parameter descriptions and response schemas
   
-- **ReDoc**: http://localhost:8000/redoc
+- **ReDoc**: http://localhost:18200/redoc
   - Clean, three-panel documentation layout
   - Detailed request/response examples
   - Search functionality
 
-- **OpenAPI JSON**: http://localhost:8000/openapi.json
+- **OpenAPI JSON**: http://localhost:18200/openapi.json
   - Raw OpenAPI 3.0 specification
   - Use with API clients, code generators, or testing tools
 
@@ -171,7 +171,7 @@ Extract text from images with detailed OCR results including detection polygons,
 
 **Example**:
 ```bash
-curl -X POST "http://localhost:8000/ocr" \
+curl -X POST "http://localhost:18200/ocr" \
   -F "file=@image.jpg" \
   -F "lang=en"
 ```
@@ -230,7 +230,7 @@ Advanced document parsing with layout detection, extracting structured content i
 
 **Example**:
 ```bash
-curl -X POST "http://localhost:8000/doc_parser" \
+curl -X POST "http://localhost:18200/doc_parser" \
   -F "file=@document.pdf" \
   -F "use_layout_detection=true"
 ```
@@ -329,7 +329,7 @@ Comprehensive document structure recognition including layout analysis, table de
 
 **Example**:
 ```bash
-curl -X POST "http://localhost:8000/structure" \
+curl -X POST "http://localhost:18200/structure" \
   -F "file=@table_document.jpg" \
   -F "use_table_recognition=true" \
   -F "use_formula_recognition=true"
@@ -411,7 +411,7 @@ Upload a file and get its base64 encoding for later use with other endpoints.
 
 **Example**:
 ```bash
-curl -X POST "http://localhost:8000/upload" \
+curl -X POST "http://localhost:18200/upload" \
   -F "file=@image.jpg"
 ```
 
@@ -497,7 +497,7 @@ cp .env.example .env
 
 **Server Configuration**:
 - `HOST`: Server host (default: `0.0.0.0`)
-- `PORT`: Server port (default: `8000`)
+- `PORT`: Server port (default: `18200`)
 - `DEVICE`: Computation device - `cpu`, `gpu`, `gpu:0`, `gpu:1`, etc. (default: `cpu`)
 - `LOG_LEVEL`: Logging level - `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (default: `INFO`)
 
@@ -696,25 +696,25 @@ for result in response['results']:
 **Language Selection** (OCR endpoint):
 ```bash
 # English
-curl -X POST "http://localhost:8000/ocr" -F "file=@image.jpg" -F "lang=en"
+curl -X POST "http://localhost:18200/ocr" -F "file=@image.jpg" -F "lang=en"
 
 # Chinese
-curl -X POST "http://localhost:8000/ocr" -F "file=@image.jpg" -F "lang=ch"
+curl -X POST "http://localhost:18200/ocr" -F "file=@image.jpg" -F "lang=ch"
 
 # Multiple languages (auto-detect)
-curl -X POST "http://localhost:8000/ocr" -F "file=@image.jpg" -F "lang=ch"
+curl -X POST "http://localhost:18200/ocr" -F "file=@image.jpg" -F "lang=ch"
 ```
 
 **Quality vs Speed** (adjustable thresholds):
 ```bash
 # Higher quality (slower)
-curl -X POST "http://localhost:8000/ocr" \
+curl -X POST "http://localhost:18200/ocr" \
   -F "file=@image.jpg" \
   -F "text_det_thresh=0.2" \
   -F "text_rec_score_thresh=0.7"
 
 # Faster (lower precision)
-curl -X POST "http://localhost:8000/ocr" \
+curl -X POST "http://localhost:18200/ocr" \
   -F "file=@image.jpg" \
   -F "text_det_thresh=0.5" \
   -F "text_rec_score_thresh=0.5"
@@ -755,7 +755,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 18200
 
 CMD ["python", "app.py"]
 ```
