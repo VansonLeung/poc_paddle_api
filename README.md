@@ -60,12 +60,12 @@ A comprehensive REST API server for OCR (Optical Character Recognition), documen
 3. **Install dependencies**:
    ```bash
    # For CPU version
-   pip install paddlepaddle
    pip install -r requirements.txt
+   pip install -r requirements-cpu.txt
    
    # For GPU version (CUDA 12.6)
-   pip install paddlepaddle-gpu==3.2.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
    pip install -r requirements.txt
+   pip install -r requirements-gpu.txt
    ```
 
 4. **Configure environment** (optional):
