@@ -82,9 +82,7 @@ async def perform_ocr(
     - **file**: Upload an image file (PNG, JPG, JPEG, BMP)
     - **image_base64**: Alternative to file upload - provide base64 encoded image
     - **lang**: Language code for OCR (default: "en")
-      - "en": English
-      - "ch": Chinese
-      - "fr": French, "de": German, "es": Spanish, "pt": Portuguese, etc.
+      - "en": English, "ch": Chinese, "fr": French, "de": German, "es": Spanish, "pt": Portuguese, etc.
     
     **Advanced Options:**
     - **use_doc_orientation_classify**: Detect and correct document orientation
@@ -94,6 +92,7 @@ async def perform_ocr(
     - **text_det_thresh**: Binary threshold for text detection (default: 0.3)
     - **text_det_box_thresh**: Confidence threshold for detected boxes (default: 0.5)
     - **text_rec_score_thresh**: Minimum confidence for recognized text (default: 0.5)
+    - **return_word_box**: Return word-level bounding boxes instead of line-level
     
     **Response Format:**
     ```json
@@ -101,15 +100,18 @@ async def perform_ocr(
       "success": true,
       "results": [
         {
-          "input_path": "/path/to/processed/image.jpg",
-          "page_index": null,
-          "ocr_results": [
-            {
-              "text": "Recognized text content",
-              "score": 0.9993,
-              "bbox": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+          "json": {
+            "res": {
+              "input_path": "/tmp/image.jpg",
+              "page_index": null,
+              "dt_polys": [[[x1,y1], [x2,y2], [x3,y3], [x4,y4]], ...],
+              "rec_texts": ["Extracted text 1", "Extracted text 2", ...],
+              "rec_scores": [0.9876, 0.9543, ...],
+              "rec_polys": [[[x1,y1], [x2,y2], [x3,y3], [x4,y4]], ...],
+              "rec_boxes": [[x1, y1, x2, y2], ...]
             }
-          ]
+          },
+          "markdown": "Extracted text in markdown format"
         }
       ]
     }
@@ -118,18 +120,20 @@ async def perform_ocr(
     **Response Fields:**
     - **success**: Boolean indicating if OCR was successful
     - **results**: Array of result objects (one per page/image)
-      - **input_path**: Path to the processed input file
-      - **page_index**: Page number (null for single images, 0-based for PDFs)
-      - **ocr_results**: Array of detected text regions
-        - **text**: Extracted text content
-        - **score**: Confidence score (0.0-1.0) for the recognized text
-        - **bbox**: Bounding box coordinates as 4 corner points [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-          - Points are in clockwise order: top-left, top-right, bottom-right, bottom-left
-          - Coordinates are in pixels relative to the original image
+      - **json**: Detailed OCR results
+        - **res**: OCR result data
+          - **input_path**: Path to the processed input file
+          - **page_index**: Page number (null for single images, 0-based for PDFs)
+          - **dt_polys**: Text detection polygons (4-point coordinates for each detected text region)
+          - **rec_texts**: Array of recognized text strings
+          - **rec_scores**: Confidence scores (0.0-1.0) for each recognized text
+          - **rec_polys**: Recognition polygons (refined bounding boxes)
+          - **rec_boxes**: Bounding boxes in [x1, y1, x2, y2] format
+      - **markdown**: OCR results formatted as markdown text
     
     **Example:**
     ```bash
-    curl -X POST "http://localhost:8000/ocr" \\
+    curl -X POST "http://localhost:18200/ocr" \\
       -F "file=@document.jpg" \\
       -F "lang=en"
     ```
@@ -137,14 +141,6 @@ async def perform_ocr(
     **Error Responses:**
     - **400**: No image provided (missing both file and image_base64)
     - **500**: OCR processing error (with error details)
-        text_det_thresh: Text detection threshold
-        text_det_box_thresh: Text detection box threshold
-        text_det_unclip_ratio: Text detection unclip ratio
-        text_rec_score_thresh: Text recognition score threshold
-        return_word_box: Whether to return word-level bounding boxes
-        
-    Returns:
-        OCR results with text and bounding boxes
     """
     temp_file = None
     
@@ -217,30 +213,135 @@ async def parse_document(
     max_pixels: Optional[int] = Form(None),
 ):
     """
-    Parse document using PaddleOCR-VL
+    Parse document using PaddleOCR-VL (Vision-Language Model).
     
-    Args:
-        file: Uploaded file (image or PDF)
-        file_base64: Base64 encoded file
-        use_doc_orientation_classify: Whether to use document orientation classification
-        use_doc_unwarping: Whether to use document unwarping
-        use_layout_detection: Whether to use layout detection
-        use_chart_recognition: Whether to use chart recognition
-        layout_threshold: Layout detection threshold
-        layout_nms: Layout detection NMS value
-        layout_unclip_ratio: Layout detection unclip ratio
-        layout_merge_bboxes_mode: Layout detection merge boxes mode
-        use_queues: Whether to use queues for processing
-        prompt_label: Prompt label for content extraction
-        format_block_content: Whether to format block content
-        repetition_penalty: Repetition penalty for text generation
-        temperature: Temperature for text generation
-        top_p: Top-p sampling for text generation
-        min_pixels: Minimum pixels for image resizing
-        max_pixels: Maximum pixels for image resizing
-        
-    Returns:
-        Document parsing results with layout and content
+    This endpoint performs advanced document parsing with layout detection, extracting structured
+    content from documents including text blocks, tables, figures, titles, and other layout elements.
+    Supports both images and PDFs.
+    
+    **Request Parameters:**
+    - **file**: Upload a document file (PNG, JPG, JPEG, BMP, PDF)
+    - **file_base64**: Alternative to file upload - provide base64 encoded file
+    
+    **Layout & Processing Options:**
+    - **use_doc_orientation_classify**: Detect and correct document orientation (default: false)
+    - **use_doc_unwarping**: Dewarp/straighten curved or distorted documents (default: false)
+    - **use_layout_detection**: Enable layout detection to identify document structure (default: true)
+    - **use_chart_recognition**: Enable chart/figure recognition (default: false)
+    - **layout_threshold**: Confidence threshold for layout detection (0.0-1.0)
+    - **layout_nms**: NMS (Non-Maximum Suppression) threshold for layout detection
+    - **layout_unclip_ratio**: Unclip ratio for layout region expansion
+    - **layout_merge_bboxes_mode**: Mode for merging bounding boxes
+    
+    **Content Processing Options:**
+    - **format_block_content**: Format block content with proper structure (default: false)
+    - **prompt_label**: Custom prompt label for content extraction
+    - **use_queues**: Enable queue-based processing for large documents
+    
+    **Generation Parameters (for VL model):**
+    - **repetition_penalty**: Penalty for repeated tokens in text generation (default: 1.0)
+    - **temperature**: Sampling temperature for generation (default: 1.0, higher = more random)
+    - **top_p**: Nucleus sampling parameter (default: 1.0)
+    - **min_pixels**: Minimum image pixels for resizing
+    - **max_pixels**: Maximum image pixels for resizing
+    
+    **Response Format:**
+    ```json
+    {
+      "success": true,
+      "results": [
+        {
+          "json": {
+            "res": {
+              "input_path": "/tmp/document.jpg",
+              "page_index": null,
+              "model_settings": {
+                "use_doc_preprocessor": false,
+                "use_layout_detection": true,
+                "use_chart_recognition": false,
+                "format_block_content": false
+              },
+              "parsing_res_list": [
+                {
+                  "block_label": "paragraph_title",
+                  "block_content": "Document Title",
+                  "block_bbox": [x1, y1, x2, y2],
+                  "block_id": 0,
+                  "block_order": 1
+                },
+                {
+                  "block_label": "text",
+                  "block_content": "Paragraph content...",
+                  "block_bbox": [x1, y1, x2, y2],
+                  "block_id": 1,
+                  "block_order": 2
+                }
+              ],
+              "layout_det_res": {
+                "input_path": null,
+                "page_index": null,
+                "boxes": [
+                  {
+                    "cls_id": 17,
+                    "label": "paragraph_title",
+                    "score": 0.6941,
+                    "coordinate": [x1, y1, x2, y2]
+                  }
+                ]
+              }
+            }
+          },
+          "markdown": {
+            "markdown_images": {},
+            "page_index": null,
+            "input_path": "/tmp/document.jpg",
+            "markdown_texts": "## Document Title\\n\\nParagraph content...",
+            "page_continuation_flags": [false, true]
+          }
+        }
+      ]
+    }
+    ```
+    
+    **Response Fields:**
+    - **success**: Boolean indicating if parsing was successful
+    - **results**: Array of result objects (one per page)
+      - **json**: Detailed parsing results
+        - **res**: Parsing result data
+          - **input_path**: Path to the processed input file
+          - **page_index**: Page number (null for single images)
+          - **model_settings**: Settings used for parsing
+          - **parsing_res_list**: List of detected layout blocks
+            - **block_label**: Type of block (paragraph_title, text, table, figure, footer, etc.)
+            - **block_content**: Extracted text content from the block
+            - **block_bbox**: Bounding box [x1, y1, x2, y2] in pixels
+            - **block_id**: Unique identifier for the block
+            - **block_order**: Reading order of the block
+          - **layout_det_res**: Raw layout detection results with bounding boxes and confidence scores
+      - **markdown**: Document content in markdown format
+        - **markdown_texts**: Full document text formatted as markdown
+        - **markdown_images**: Dictionary of embedded images (if any)
+        - **page_continuation_flags**: Indicates page breaks in multi-page documents
+    
+    **Block Label Types:**
+    - `paragraph_title`: Section headings and titles
+    - `text`: Regular paragraph text
+    - `table`: Table content
+    - `figure`: Images, diagrams, charts
+    - `footer`: Footer content
+    - `header`: Header content
+    - `list`: Bulleted or numbered lists
+    
+    **Example:**
+    ```bash
+    curl -X POST "http://localhost:18200/doc_parser" \\
+      -F "file=@document.pdf" \\
+      -F "use_layout_detection=true"
+    ```
+    
+    **Error Responses:**
+    - **400**: No file provided (missing both file and file_base64)
+    - **500**: Document parsing error (with error details)
     """
     temp_file = None
     
@@ -345,14 +446,190 @@ async def recognize_structure(
     use_e2e_wireless_table_rec_model: bool = Form(True),
 ):
     """
-    Recognize document structure using PP-StructureV3
+    Recognize document structure using PP-StructureV3.
     
-    Args:
-        file: Uploaded file (image or PDF)
-        file_base64: Base64 encoded file
-        
-    Returns:
-        Structure recognition results
+    This endpoint performs comprehensive document structure recognition, including layout analysis,
+    table detection and recognition, formula recognition, seal detection, and OCR. It's designed
+    for complex document processing with detailed structural information.
+    
+    **Request Parameters:**
+    - **file**: Upload a document file (PNG, JPG, JPEG, BMP, PDF)
+    - **file_base64**: Alternative to file upload - provide base64 encoded file
+    
+    **Document Preprocessing:**
+    - **use_doc_orientation_classify**: Detect and correct document orientation
+    - **use_doc_unwarping**: Dewarp/straighten curved or distorted documents
+    - **use_textline_orientation**: Correct text line orientation
+    
+    **Feature Toggles:**
+    - **use_seal_recognition**: Enable seal/stamp recognition (default: false)
+    - **use_table_recognition**: Enable table structure recognition (default: true)
+    - **use_formula_recognition**: Enable mathematical formula recognition (default: true)
+    - **use_chart_recognition**: Enable chart/graph recognition (default: false)
+    - **use_region_detection**: Enable region detection for layout (default: true)
+    
+    **Layout Detection Parameters:**
+    - **layout_threshold**: Confidence threshold for layout detection
+    - **layout_nms**: NMS threshold for layout region merging
+    - **layout_unclip_ratio**: Expansion ratio for layout regions
+    - **layout_merge_bboxes_mode**: Mode for merging adjacent bounding boxes
+    
+    **Text Detection Parameters:**
+    - **text_det_limit_side_len**: Maximum side length for text detection (pixels)
+    - **text_det_limit_type**: Limit type: 'max' or 'min'
+    - **text_det_thresh**: Binary threshold for text detection (0.0-1.0)
+    - **text_det_box_thresh**: Box confidence threshold (0.0-1.0)
+    - **text_det_unclip_ratio**: Unclip ratio for text boxes
+    - **text_rec_score_thresh**: Minimum confidence for text recognition (0.0-1.0)
+    
+    **Seal Recognition Parameters:**
+    - **seal_det_limit_side_len**: Maximum side length for seal detection
+    - **seal_det_limit_type**: Limit type for seal detection
+    - **seal_det_thresh**: Binary threshold for seal detection
+    - **seal_det_box_thresh**: Box threshold for seal detection
+    - **seal_det_unclip_ratio**: Unclip ratio for seal boxes
+    - **seal_rec_score_thresh**: Minimum confidence for seal recognition
+    
+    **Table Recognition Options:**
+    - **use_wired_table_cells_trans_to_html**: Convert wired tables to HTML (default: false)
+    - **use_wireless_table_cells_trans_to_html**: Convert wireless tables to HTML (default: false)
+    - **use_table_orientation_classify**: Classify table orientation (default: true)
+    - **use_ocr_results_with_table_cells**: Include OCR in table cells (default: true)
+    - **use_e2e_wired_table_rec_model**: Use end-to-end model for wired tables (default: false)
+    - **use_e2e_wireless_table_rec_model**: Use end-to-end model for wireless tables (default: true)
+    
+    **Response Format:**
+    ```json
+    {
+      "success": true,
+      "results": [
+        {
+          "json": {
+            "res": {
+              "input_path": "/tmp/document.jpg",
+              "page_index": null,
+              "model_settings": {
+                "use_doc_preprocessor": true,
+                "use_seal_recognition": false,
+                "use_table_recognition": true,
+                "use_formula_recognition": true,
+                "use_chart_recognition": false,
+                "use_region_detection": true,
+                "format_block_content": false
+              },
+              "parsing_res_list": [
+                {
+                  "block_label": "paragraph_title",
+                  "block_content": "Section Title",
+                  "block_bbox": [x1, y1, x2, y2],
+                  "block_id": 0,
+                  "block_order": 1
+                },
+                {
+                  "block_label": "text",
+                  "block_content": "Paragraph text...",
+                  "block_bbox": [x1, y1, x2, y2],
+                  "block_id": 1,
+                  "block_order": 2
+                }
+              ],
+              "doc_preprocessor_res": {
+                "input_path": null,
+                "page_index": null,
+                "model_settings": {
+                  "use_doc_orientation_classify": false,
+                  "use_doc_unwarping": false
+                },
+                "angle": -1
+              },
+              "layout_det_res": {
+                "input_path": null,
+                "page_index": null,
+                "boxes": [
+                  {
+                    "cls_id": 2,
+                    "label": "text",
+                    "score": 0.9298,
+                    "coordinate": [x1, y1, x2, y2]
+                  }
+                ]
+              },
+              "overall_ocr_res": {
+                "input_path": null,
+                "page_index": null,
+                "model_settings": {
+                  "use_doc_preprocessor": false,
+                  "use_textline_orientation": true
+                },
+                "dt_polys": [[[x1,y1], [x2,y2], [x3,y3], [x4,y4]], ...],
+                "rec_texts": ["Text 1", "Text 2", ...],
+                "rec_scores": [0.9876, 0.9543, ...],
+                "rec_polys": [[[x1,y1], [x2,y2], [x3,y3], [x4,y4]], ...],
+                "rec_boxes": [[x1, y1, x2, y2], ...]
+              }
+            }
+          },
+          "markdown": {
+            "markdown_images": {},
+            "page_index": null,
+            "input_path": "/tmp/document.jpg",
+            "markdown_texts": "## Section Title\\n\\nParagraph text...",
+            "page_continuation_flags": [false, true]
+          }
+        }
+      ]
+    }
+    ```
+    
+    **Response Fields:**
+    - **success**: Boolean indicating if structure recognition was successful
+    - **results**: Array of result objects (one per page)
+      - **json**: Detailed structure recognition results
+        - **res**: Structure result data
+          - **input_path**: Path to the processed input file
+          - **page_index**: Page number (null for single images)
+          - **model_settings**: Settings used for structure recognition
+          - **parsing_res_list**: List of parsed structural blocks
+            - **block_label**: Type (paragraph_title, text, table, figure, footer, etc.)
+            - **block_content**: Extracted content from the block
+            - **block_bbox**: Bounding box [x1, y1, x2, y2] in pixels
+            - **block_id**: Unique block identifier
+            - **block_order**: Reading order sequence
+          - **doc_preprocessor_res**: Document preprocessing results (orientation, angle)
+          - **layout_det_res**: Layout detection results with regions and confidence scores
+          - **overall_ocr_res**: Complete OCR results for the entire document
+            - **dt_polys**: Detection polygons for text regions
+            - **rec_texts**: Recognized text strings
+            - **rec_scores**: Confidence scores for each text
+            - **rec_polys**: Recognition polygons (refined coordinates)
+            - **rec_boxes**: Bounding boxes in [x1, y1, x2, y2] format
+      - **markdown**: Document structure in markdown format
+        - **markdown_texts**: Full document formatted as markdown
+        - **markdown_images**: Dictionary of embedded images
+        - **page_continuation_flags**: Page break indicators
+    
+    **Block Label Types:**
+    - `paragraph_title`: Headings and section titles
+    - `text`: Regular paragraph text
+    - `table`: Table structures
+    - `figure`: Images, diagrams, charts
+    - `formula`: Mathematical formulas
+    - `seal`: Stamps and seals
+    - `header`: Page headers
+    - `footer`: Page footers
+    - `list`: Lists (bulleted/numbered)
+    
+    **Example:**
+    ```bash
+    curl -X POST "http://localhost:18200/structure" \\
+      -F "file=@document.pdf" \\
+      -F "use_table_recognition=true" \\
+      -F "use_formula_recognition=true"
+    ```
+    
+    **Error Responses:**
+    - **400**: No file provided (missing both file and file_base64)
+    - **500**: Structure recognition error (with error details)
     """
     temp_file = None
     
