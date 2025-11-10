@@ -42,32 +42,85 @@ async def health_check():
 
 
 async def perform_ocr(
-    file: Optional[UploadFile] = File(None),
-    image_base64: Optional[str] = Form(None),
-    lang: str = Form("en"),
-    use_doc_orientation_classify: Optional[bool] = Form(None),
-    use_doc_unwarping: Optional[bool] = Form(None),
-    use_textline_orientation: Optional[bool] = Form(None),
-    text_det_limit_side_len: Optional[int] = Form(None),
-    text_det_limit_type: Optional[str] = Form(None),
-    text_det_thresh: Optional[float] = Form(None),
-    text_det_box_thresh: Optional[float] = Form(None),
-    text_det_unclip_ratio: Optional[float] = Form(None),
-    text_rec_score_thresh: Optional[float] = Form(None),
-    return_word_box: Optional[bool] = Form(None),
+    file: Optional[UploadFile] = File(None, description="Image file to perform OCR on (PNG, JPG, JPEG, BMP)"),
+    image_base64: Optional[str] = Form(None, description="Base64 encoded image string (alternative to file upload)"),
+    lang: str = Form("en", description="OCR language code (e.g., 'en' for English, 'ch' for Chinese)"),
+    use_doc_orientation_classify: Optional[bool] = Form(None, description="Enable document orientation classification"),
+    use_doc_unwarping: Optional[bool] = Form(None, description="Enable document unwarping/dewarping"),
+    use_textline_orientation: Optional[bool] = Form(None, description="Enable textline orientation correction"),
+    text_det_limit_side_len: Optional[int] = Form(None, description="Maximum side length for text detection (pixels)"),
+    text_det_limit_type: Optional[str] = Form(None, description="Limit type: 'max' or 'min'"),
+    text_det_thresh: Optional[float] = Form(None, description="Binary threshold for text detection (0.0-1.0)"),
+    text_det_box_thresh: Optional[float] = Form(None, description="Box threshold for text detection (0.0-1.0)"),
+    text_det_unclip_ratio: Optional[float] = Form(None, description="Unclip ratio for text detection bounding boxes"),
+    text_rec_score_thresh: Optional[float] = Form(None, description="Minimum confidence score for text recognition (0.0-1.0)"),
+    return_word_box: Optional[bool] = Form(None, description="Return word-level bounding boxes instead of line-level"),
 ):
     """
-    Perform OCR on an image
+    Perform Optical Character Recognition (OCR) on an image.
     
-    Args:
-        file: Uploaded image file (optional)
-        image_base64: Base64 encoded image (optional)
-        lang: Language for OCR (default: "en")
-        use_doc_orientation_classify: Whether to use document orientation classification
-        use_doc_unwarping: Whether to use document unwarping
-        use_textline_orientation: Whether to use textline orientation correction
-        text_det_limit_side_len: Limit side length for text detection
-        text_det_limit_type: Limit type for text detection
+    This endpoint extracts text from images using PaddleOCR. It supports various image formats
+    and multiple languages. You can upload a file directly or provide a base64-encoded image.
+    
+    **Request Parameters:**
+    - **file**: Upload an image file (PNG, JPG, JPEG, BMP)
+    - **image_base64**: Alternative to file upload - provide base64 encoded image
+    - **lang**: Language code for OCR (default: "en")
+      - "en": English
+      - "ch": Chinese
+      - "fr": French, "de": German, "es": Spanish, "pt": Portuguese, etc.
+    
+    **Advanced Options:**
+    - **use_doc_orientation_classify**: Detect and correct document orientation
+    - **use_doc_unwarping**: Dewarp/straighten curved or distorted documents
+    - **use_textline_orientation**: Correct text line orientation
+    - **text_det_limit_side_len**: Resize image if side exceeds this length
+    - **text_det_thresh**: Binary threshold for text detection (default: 0.3)
+    - **text_det_box_thresh**: Confidence threshold for detected boxes (default: 0.5)
+    - **text_rec_score_thresh**: Minimum confidence for recognized text (default: 0.5)
+    
+    **Response Format:**
+    ```json
+    {
+      "success": true,
+      "results": [
+        {
+          "input_path": "/path/to/processed/image.jpg",
+          "page_index": null,
+          "ocr_results": [
+            {
+              "text": "Recognized text content",
+              "score": 0.9993,
+              "bbox": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+    
+    **Response Fields:**
+    - **success**: Boolean indicating if OCR was successful
+    - **results**: Array of result objects (one per page/image)
+      - **input_path**: Path to the processed input file
+      - **page_index**: Page number (null for single images, 0-based for PDFs)
+      - **ocr_results**: Array of detected text regions
+        - **text**: Extracted text content
+        - **score**: Confidence score (0.0-1.0) for the recognized text
+        - **bbox**: Bounding box coordinates as 4 corner points [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+          - Points are in clockwise order: top-left, top-right, bottom-right, bottom-left
+          - Coordinates are in pixels relative to the original image
+    
+    **Example:**
+    ```bash
+    curl -X POST "http://localhost:8000/ocr" \\
+      -F "file=@document.jpg" \\
+      -F "lang=en"
+    ```
+    
+    **Error Responses:**
+    - **400**: No image provided (missing both file and image_base64)
+    - **500**: OCR processing error (with error details)
         text_det_thresh: Text detection threshold
         text_det_box_thresh: Text detection box threshold
         text_det_unclip_ratio: Text detection unclip ratio
@@ -321,36 +374,36 @@ async def parse_document(
 async def recognize_structure(
     file: Optional[UploadFile] = File(None),
     file_base64: Optional[str] = Form(None),
-        use_doc_orientation_classify: Optional[bool] = Form(None),
-        use_doc_unwarping: Optional[bool] = Form(None),
-        use_textline_orientation: Optional[bool] = Form(None),
-        use_seal_recognition: Optional[bool] = Form(None),
-        use_table_recognition: Optional[bool] = Form(None),
-        use_formula_recognition: Optional[bool] = Form(None),
-        use_chart_recognition: Optional[bool] = Form(None),
-        use_region_detection: Optional[bool] = Form(None),
-        layout_threshold: Optional[bool] = Form(None),
-        layout_nms: Optional[bool] = Form(None),
-        layout_unclip_ratio: Optional[Union[float, list, dict, None]] = Form(None),
-        layout_merge_bboxes_mode: Optional[Union[str, dict, None]] = Form(None),
-        text_det_limit_side_len: Optional[int] = Form(None),
-        text_det_limit_type: Optional[str] = Form(None),
-        text_det_thresh: Optional[float] = Form(None),
-        text_det_box_thresh: Optional[float] = Form(None),
-        text_det_unclip_ratio: Optional[float] = Form(None),
-        text_rec_score_thresh: Optional[float] = Form(None),
-        seal_det_limit_side_len: Optional[int] = Form(None),
-        seal_det_limit_type: Optional[str] = Form(None),
-        seal_det_thresh: Optional[float] = Form(None),
-        seal_det_box_thresh: Optional[float] = Form(None),
-        seal_det_unclip_ratio: Optional[float] = Form(None),
-        seal_rec_score_thresh: Optional[float] = Form(None),
-        use_wired_table_cells_trans_to_html: bool = Form(False),
-        use_wireless_table_cells_trans_to_html: bool = Form(False),
-        use_table_orientation_classify: bool = Form(True),
-        use_ocr_results_with_table_cells: bool = Form(True),
-        use_e2e_wired_table_rec_model: bool = Form(False),
-        use_e2e_wireless_table_rec_model: bool = Form(True),
+    use_doc_orientation_classify: Optional[bool] = Form(None),
+    use_doc_unwarping: Optional[bool] = Form(None),
+    use_textline_orientation: Optional[bool] = Form(None),
+    use_seal_recognition: Optional[bool] = Form(None),
+    use_table_recognition: Optional[bool] = Form(None),
+    use_formula_recognition: Optional[bool] = Form(None),
+    use_chart_recognition: Optional[bool] = Form(None),
+    use_region_detection: Optional[bool] = Form(None),
+    layout_threshold: Optional[bool] = Form(None),
+    layout_nms: Optional[bool] = Form(None),
+    layout_unclip_ratio: Optional[Union[float, list, dict, None]] = Form(None),
+    layout_merge_bboxes_mode: Optional[Union[str, dict, None]] = Form(None),
+    text_det_limit_side_len: Optional[int] = Form(None),
+    text_det_limit_type: Optional[str] = Form(None),
+    text_det_thresh: Optional[float] = Form(None),
+    text_det_box_thresh: Optional[float] = Form(None),
+    text_det_unclip_ratio: Optional[float] = Form(None),
+    text_rec_score_thresh: Optional[float] = Form(None),
+    seal_det_limit_side_len: Optional[int] = Form(None),
+    seal_det_limit_type: Optional[str] = Form(None),
+    seal_det_thresh: Optional[float] = Form(None),
+    seal_det_box_thresh: Optional[float] = Form(None),
+    seal_det_unclip_ratio: Optional[float] = Form(None),
+    seal_rec_score_thresh: Optional[float] = Form(None),
+    use_wired_table_cells_trans_to_html: bool = Form(False),
+    use_wireless_table_cells_trans_to_html: bool = Form(False),
+    use_table_orientation_classify: bool = Form(True),
+    use_ocr_results_with_table_cells: bool = Form(True),
+    use_e2e_wired_table_rec_model: bool = Form(False),
+    use_e2e_wireless_table_rec_model: bool = Form(True),
 ):
     """
     Recognize document structure using PP-StructureV3
