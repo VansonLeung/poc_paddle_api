@@ -1,5 +1,5 @@
 # PaddleOCR and dependencies
-paddleocr>=3.3.8
+paddleocr>=3.3.2
 paddlex[ocr]>=3.3.8
 
 # SafeTensors

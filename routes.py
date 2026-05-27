@@ -37,6 +37,39 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 
+def _serialize_result(res):
+  """Convert model result objects to JSON + markdown with safe fallbacks."""
+  if hasattr(res, "_to_json"):
+    json_data = res._to_json()
+  elif hasattr(res, "to_json"):
+    json_data = res.to_json()
+  elif hasattr(res, "to_dict"):
+    json_data = res.to_dict()
+  else:
+    json_data = res
+
+  if hasattr(res, "_to_markdown"):
+    markdown_data = res._to_markdown()
+  elif hasattr(res, "to_markdown"):
+    markdown_data = res.to_markdown()
+  else:
+    markdown_data = None
+    try:
+      body = json_data.get("res", json_data) if isinstance(json_data, dict) else {}
+      if isinstance(body, dict):
+        if "markdown_texts" in body:
+          markdown_data = body.get("markdown_texts")
+        elif "rec_texts" in body:
+          markdown_data = "\n".join(body.get("rec_texts") or [])
+    except Exception:
+      markdown_data = None
+
+  return {
+    "json": json_data,
+    "markdown": markdown_data,
+  }
+
+
 async def root():
     """Root endpoint - API information"""
     return {
@@ -167,11 +200,7 @@ async def perform_ocr(
         
         output_results = []
         for res in results:
-            result_dict = {
-                "json": res._to_json(),
-                "markdown": res._to_markdown(),
-            }
-            output_results.append(result_dict)
+          output_results.append(_serialize_result(res))
         
         logger.info("OCR request completed successfully")
         return JSONResponse(content={
@@ -386,11 +415,7 @@ async def parse_document(
         
         output_results = []
         for res in results:
-            result_dict = {
-                "json": res._to_json(),
-                "markdown": res._to_markdown(),
-            }
-            output_results.append(result_dict)
+          output_results.append(_serialize_result(res))
         
         logger.info("Document parser request completed successfully")
         return JSONResponse(content={
@@ -656,11 +681,7 @@ async def recognize_structure(
         
         output_results = []
         for res in results:
-            result_dict = {
-                "json": res._to_json(),
-                "markdown": res._to_markdown(),
-            }
-            output_results.append(result_dict)
+          output_results.append(_serialize_result(res))
         
         logger.info("Structure recognition request completed successfully")
         return JSONResponse(content={
